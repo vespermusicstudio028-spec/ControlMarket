@@ -1,0 +1,27 @@
+export default function Logo({ className = "w-8 h-8" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      {/* Blue Top/Left Curve */}
+      <path d="M40 120 A 80 80 0 0 1 150 40" stroke="#0A2F6B" strokeWidth="12" strokeLinecap="round" />
+      <path d="M150 40 A 85 85 0 0 0 35 125 Z" fill="#0A2F6B" />
+
+      {/* Green Bottom/Right Curve */}
+      <path d="M165 65 A 75 75 0 0 1 100 175" stroke="#4CAF50" strokeWidth="10" strokeLinecap="round" />
+
+      {/* Shopping Cart Handle & Base (Blue) */}
+      <path d="M15 80 L 45 80 L 70 145 L 160 145 L 175 105 L 75 105" stroke="#0A2F6B" strokeWidth="12" strokeLinejoin="round" strokeLinecap="round" fill="none" />
+      
+      {/* Wheels */}
+      <circle cx="85" cy="165" r="12" fill="#0A2F6B" />
+      <circle cx="145" cy="165" r="12" fill="#0A2F6B" />
+
+      {/* Bar Chart inside Cart */}
+      {/* Light Green */}
+      <rect x="75" y="85" width="20" height="20" fill="#8BC34A" rx="2" />
+      {/* Medium Green */}
+      <rect x="100" y="65" width="20" height="40" fill="#4CAF50" rx="2" />
+      {/* Dark Green */}
+      <rect x="125" y="45" width="20" height="60" fill="#2E7D32" rx="2" />
+    </svg>
+  );
+}

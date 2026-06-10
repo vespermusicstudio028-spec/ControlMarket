@@ -1,0 +1,6 @@
+{
+  "name": "ControlMarket Landing Page",
+  "description": "Uma página de destino completa e responsiva para um sistema SaaS de gestão comercial, controle de estoque e PDV.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
