@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogOut, LayoutDashboard, ShoppingCart, Settings, Menu, X, Package, ShieldCheck, AlertTriangle, CreditCard, Wallet, Banknote, QrCode, TrendingUp, CheckCircle, Cloud, CloudOff, RefreshCw, Database, Lock, Clock } from 'lucide-react';
+import { LogOut, LayoutDashboard, ShoppingCart, Settings, Menu, X, Package, ShieldCheck, AlertTriangle, CreditCard, Wallet, Banknote, QrCode, TrendingUp, CheckCircle, Cloud, CloudOff, RefreshCw, Database, Lock, Clock, KeyRound, Trash2 } from 'lucide-react';
 import Logo from './Logo';
 import ProductsManager from './ProductsManager';
 import AdminUsersManager from './AdminUsersManager';
+import PinLock, { isPinEnabled, savePin, removePin, verifyPin } from './PinLock';
 import { runFullSync, getSyncDetails, subscribeToCloudChanges, type SyncDetails } from '../lib/syncService';
 
 type SubscriptionStatus = 'loading' | 'active' | 'trial' | 'expired' | 'no_profile';
@@ -50,6 +51,15 @@ export default function Dashboard({ session }: { session: any }) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('loading');
   const [daysLeft, setDaysLeft] = useState(0);
   const [userProfile, setUserProfile] = useState<any>(null);
+
+  // Controle de PIN
+  const [isPinLocked, setIsPinLocked] = useState(false);
+
+  // Configuração de PIN (painel de settings)
+  const [pinSettingsStep, setPinSettingsStep] = useState<'idle' | 'enter_current' | 'enter_new' | 'confirm_new' | 'success'>('idle');
+  const [pinInput, setPinInput] = useState('');
+  const [pinNewTemp, setPinNewTemp] = useState('');
+  const [pinError, setPinError] = useState('');
 
   const isAdmin = session?.user?.email?.trim().toLowerCase() === 'controlmarketadmin@gmail.com';
 
@@ -102,6 +112,14 @@ export default function Dashboard({ session }: { session: any }) {
     };
 
     checkSubscription();
+  }, [session?.user?.id, isAdmin]);
+
+  // Verificar se PIN está ativo e bloquear ao carregar
+  useEffect(() => {
+    if (!session?.user?.id || isAdmin) return;
+    if (isPinEnabled(session.user.id)) {
+      setIsPinLocked(true);
+    }
   }, [session?.user?.id, isAdmin]);
 
   useEffect(() => {
@@ -337,6 +355,203 @@ export default function Dashboard({ session }: { session: any }) {
                 </div>
               </div>
             </div>
+
+            {/* === CARD DE PIN === */}
+            {!isAdmin && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-left shadow-sm mt-6">
+              <h3 className="text-xl font-bold text-slate-700 mb-1 flex items-center gap-2">
+                <KeyRound className="w-6 h-6 text-cm-blue" />
+                PIN de Segurança do Painel
+              </h3>
+              <p className="text-slate-500 text-sm mb-6">
+                Proteja seu painel com um PIN de 4 dígitos. Sempre que o sistema for aberto, será necessário digitá-lo para acessar.
+              </p>
+
+              {/* Status do PIN */}
+              <div className={`flex items-center gap-3 p-4 rounded-xl mb-6 ${
+                isPinEnabled(session?.user?.id)
+                  ? 'bg-emerald-50 border border-emerald-200'
+                  : 'bg-slate-50 border border-slate-200'
+              }`}>
+                <div className={`p-2 rounded-lg ${isPinEnabled(session?.user?.id) ? 'bg-emerald-100' : 'bg-slate-200'}`}>
+                  <Lock className={`w-5 h-5 ${isPinEnabled(session?.user?.id) ? 'text-emerald-600' : 'text-slate-500'}`} />
+                </div>
+                <div>
+                  <p className={`font-bold text-sm ${isPinEnabled(session?.user?.id) ? 'text-emerald-800' : 'text-slate-700'}`}>
+                    {isPinEnabled(session?.user?.id) ? 'PIN Ativado' : 'PIN Desativado'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {isPinEnabled(session?.user?.id)
+                      ? 'Seu painel está protegido com PIN de 4 dígitos.'
+                      : 'Qualquer pessoa com acesso ao dispositivo pode abrir o painel.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Formulário de PIN */}
+              {pinSettingsStep === 'idle' && (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => {
+                      setPinInput('');
+                      setPinError('');
+                      setPinSettingsStep(isPinEnabled(session?.user?.id) ? 'enter_current' : 'enter_new');
+                    }}
+                    className="flex items-center justify-center gap-2 px-5 py-3 bg-cm-blue text-white rounded-xl font-bold hover:brightness-110 transition-all shadow-sm text-sm"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    {isPinEnabled(session?.user?.id) ? 'Alterar PIN' : 'Criar PIN'}
+                  </button>
+                  {isPinEnabled(session?.user?.id) && (
+                    <button
+                      onClick={() => {
+                        setPinInput('');
+                        setPinError('');
+                        setPinSettingsStep('enter_current');
+                      }}
+                      className="flex items-center justify-center gap-2 px-5 py-3 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-bold hover:bg-rose-100 transition-all text-sm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Remover PIN
+                    </button>
+                  )}
+                  {isPinEnabled(session?.user?.id) && (
+                    <button
+                      onClick={() => setIsPinLocked(true)}
+                      className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all text-sm"
+                    >
+                      <Lock className="w-4 h-4" />
+                      Bloquear Agora
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Step: Confirmar PIN atual */}
+              {(pinSettingsStep === 'enter_current') && (
+                <div className="max-w-xs">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">PIN Atual (4 dígitos)</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={pinInput}
+                    onChange={e => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(''); }}
+                    placeholder="••••"
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-center text-2xl tracking-widest focus:border-cm-blue outline-none"
+                    autoFocus
+                  />
+                  {pinError && <p className="text-rose-600 text-xs mt-2 font-semibold">{pinError}</p>}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => {
+                        if (pinInput.length !== 4) { setPinError('Digite 4 dígitos.'); return; }
+                        if (!verifyPin(session?.user?.id, pinInput)) { setPinError('PIN incorreto.'); return; }
+                        // Se clicou em remover
+                        if (pinSettingsStep === 'enter_current' && pinNewTemp === 'remove') {
+                          removePin(session?.user?.id);
+                          setPinSettingsStep('success');
+                          return;
+                        }
+                        setPinInput('');
+                        setPinSettingsStep('enter_new');
+                      }}
+                      className="flex-1 bg-cm-blue text-white py-2.5 rounded-xl font-bold hover:brightness-110 text-sm"
+                    >
+                      Confirmar
+                    </button>
+                    <button onClick={() => { setPinSettingsStep('idle'); setPinInput(''); setPinError(''); }} className="px-4 py-2.5 bg-slate-100 rounded-xl text-slate-600 font-bold text-sm hover:bg-slate-200">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step: Digitar novo PIN */}
+              {pinSettingsStep === 'enter_new' && (
+                <div className="max-w-xs">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Novo PIN (4 dígitos)</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={pinInput}
+                    onChange={e => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(''); }}
+                    placeholder="••••"
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-center text-2xl tracking-widest focus:border-cm-blue outline-none"
+                    autoFocus
+                  />
+                  {pinError && <p className="text-rose-600 text-xs mt-2 font-semibold">{pinError}</p>}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => {
+                        if (pinInput.length !== 4) { setPinError('O PIN deve ter exatamente 4 dígitos.'); return; }
+                        setPinNewTemp(pinInput);
+                        setPinInput('');
+                        setPinSettingsStep('confirm_new');
+                      }}
+                      className="flex-1 bg-cm-blue text-white py-2.5 rounded-xl font-bold hover:brightness-110 text-sm"
+                    >
+                      Avançar
+                    </button>
+                    <button onClick={() => { setPinSettingsStep('idle'); setPinInput(''); }} className="px-4 py-2.5 bg-slate-100 rounded-xl text-slate-600 font-bold text-sm hover:bg-slate-200">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step: Confirmar novo PIN */}
+              {pinSettingsStep === 'confirm_new' && (
+                <div className="max-w-xs">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Confirme o novo PIN</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={pinInput}
+                    onChange={e => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(''); }}
+                    placeholder="••••"
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-center text-2xl tracking-widest focus:border-cm-blue outline-none"
+                    autoFocus
+                  />
+                  {pinError && <p className="text-rose-600 text-xs mt-2 font-semibold">{pinError}</p>}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => {
+                        if (pinInput !== pinNewTemp) { setPinError('Os PINs não coincidem. Tente novamente.'); return; }
+                        savePin(session?.user?.id, pinInput);
+                        setPinSettingsStep('success');
+                        setPinInput('');
+                        setPinNewTemp('');
+                      }}
+                      className="flex-1 bg-cm-green text-white py-2.5 rounded-xl font-bold hover:brightness-110 text-sm"
+                    >
+                      Salvar PIN
+                    </button>
+                    <button onClick={() => { setPinSettingsStep('idle'); setPinInput(''); setPinNewTemp(''); }} className="px-4 py-2.5 bg-slate-100 rounded-xl text-slate-600 font-bold text-sm hover:bg-slate-200">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step: Sucesso */}
+              {pinSettingsStep === 'success' && (
+                <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <CheckCircle className="w-6 h-6 text-emerald-500 shrink-0" />
+                  <div>
+                    <p className="font-bold text-emerald-800 text-sm">
+                      {isPinEnabled(session?.user?.id) ? 'PIN salvo com sucesso!' : 'PIN removido com sucesso!'}
+                    </p>
+                    <button onClick={() => setPinSettingsStep('idle')} className="text-xs text-emerald-600 underline hover:no-underline mt-0.5">
+                      Voltar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            )}
 
             <div className="bg-white border border-slate-200 rounded-2xl p-8 text-left shadow-sm mt-8">
                <h3 className="text-xl font-bold text-slate-700 mb-4 flex items-center gap-2">
@@ -598,6 +813,18 @@ create policy "Users can manage their own sales" on public.sales
 
   const activeWarnings = lowStockProducts.filter(p => !dismissedWarnings[p.id]);
 
+  // Exibir tela de PIN se bloqueado
+  if (isPinLocked) {
+    return (
+      <PinLock
+        userId={session?.user?.id}
+        userEmail={session?.user?.email}
+        onUnlock={() => setIsPinLocked(false)}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-hidden">
       {/* Active Warnings Toasts */}
@@ -757,6 +984,16 @@ create policy "Users can manage their own sales" on public.sales
               </button>
             )}
           </div>
+          {/* Botão bloquear tela */}
+          {isPinEnabled(session?.user?.id) && !isAdmin && (
+            <button
+              onClick={() => setIsPinLocked(true)}
+              className="flex items-center justify-start gap-3 w-full px-4 py-3 text-slate-500 hover:bg-slate-100 rounded-xl font-medium transition-colors mb-1"
+            >
+              <Lock className="w-5 h-5" />
+              Bloquear Tela
+            </button>
+          )}
           <button 
             onClick={handleLogout}
             className="flex items-center justify-start gap-3 w-full px-4 py-3 text-red-500 hover:bg-red-50 rounded-xl font-medium transition-colors"
