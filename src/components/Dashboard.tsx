@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogOut, LayoutDashboard, ShoppingCart, Users, Settings, Menu, X, Package, Plus, ShieldCheck, AlertTriangle, CreditCard, Wallet, Banknote, QrCode, TrendingUp, CheckCircle, Cloud, CloudOff, CloudLightning, RefreshCw, Database } from 'lucide-react';
+import { LogOut, LayoutDashboard, ShoppingCart, Settings, Menu, X, Package, ShieldCheck, AlertTriangle, CreditCard, Wallet, Banknote, QrCode, TrendingUp, CheckCircle, Cloud, CloudOff, RefreshCw, Database, Lock, Clock } from 'lucide-react';
 import Logo from './Logo';
 import ProductsManager from './ProductsManager';
 import AdminUsersManager from './AdminUsersManager';
 import { runFullSync, getSyncDetails, subscribeToCloudChanges, type SyncDetails } from '../lib/syncService';
+
+type SubscriptionStatus = 'loading' | 'active' | 'trial' | 'expired' | 'no_profile';
 
 type ViewType = 'overview' | 'products' | 'sales' | 'customers' | 'settings';
 
@@ -44,7 +46,63 @@ export default function Dashboard({ session }: { session: any }) {
     dinheiro: 0
   });
 
+  // Controle de assinatura
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('loading');
+  const [daysLeft, setDaysLeft] = useState(0);
+  const [userProfile, setUserProfile] = useState<any>(null);
+
   const isAdmin = session?.user?.email?.trim().toLowerCase() === 'controlmarketadmin@gmail.com';
+
+  // Verificar status da assinatura ao carregar
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    // Admin sempre tem acesso total
+    if (isAdmin) {
+      setSubscriptionStatus('active');
+      return;
+    }
+
+    const checkSubscription = async () => {
+      try {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error || !profile) {
+          // Tabela não existe ou perfil não encontrado — permitir acesso (modo offline)
+          setSubscriptionStatus('active');
+          return;
+        }
+
+        setUserProfile(profile);
+
+        const status = profile.status || 'trial';
+        const trialEndsAt = profile.trial_ends_at
+          ? new Date(profile.trial_ends_at)
+          : new Date(new Date(profile.created_at).getTime() + 7 * 24 * 60 * 60 * 1000);
+
+        const now = new Date();
+        const diffDays = Math.ceil((trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        setDaysLeft(diffDays);
+
+        if (status === 'active') {
+          setSubscriptionStatus('active');
+        } else if (status === 'trial' && diffDays >= 0) {
+          setSubscriptionStatus('trial');
+        } else {
+          setSubscriptionStatus('expired');
+        }
+      } catch {
+        // Em caso de erro de conexão, permitir acesso (não bloquear offline)
+        setSubscriptionStatus('active');
+      }
+    };
+
+    checkSubscription();
+  }, [session?.user?.id, isAdmin]);
 
   useEffect(() => {
     const handleSyncStatusChange = () => {
@@ -56,20 +114,11 @@ export default function Dashboard({ session }: { session: any }) {
     let pollingInterval: NodeJS.Timeout | null = null;
     
     if (session?.user?.id) {
-      // 1. Initial full bi-directional sync
       runFullSync(session.user.id);
-      
-      // 2. Real-time web socket subscription to instantly catch cloud changes
-      unsubscribe = subscribeToCloudChanges(session.user.id, () => {
-        // Trigger manual check/re-render triggers if necessary
-      });
-      
-      // 3. Robust background polling as a fail-safe fallback
+      unsubscribe = subscribeToCloudChanges(session.user.id, () => {});
       pollingInterval = setInterval(() => {
-        if (session.user.id) {
-          runFullSync(session.user.id);
-        }
-      }, 10000); // Sync every 10 seconds
+        if (session.user.id) runFullSync(session.user.id);
+      }, 10000);
     }
 
     return () => {
@@ -193,8 +242,70 @@ export default function Dashboard({ session }: { session: any }) {
 
   const handleViewChange = (view: ViewType) => {
     setCurrentView(view);
-    setIsSidebarOpen(false); // Close sidebar on mobile after selection
+    setIsSidebarOpen(false);
   };
+
+  // Tela de carregamento enquanto verifica assinatura
+  if (subscriptionStatus === 'loading') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-cm-blue/20 border-t-cm-blue rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-500 font-medium">Verificando sua assinatura...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Tela de bloqueio para plano expirado
+  if (subscriptionStatus === 'expired') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
+          {/* Header vermelho */}
+          <div className="bg-gradient-to-r from-rose-500 to-rose-600 p-8 text-center text-white">
+            <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-10 h-10 text-white" />
+            </div>
+            <h2 className="text-2xl font-extrabold">Acesso Bloqueado</h2>
+            <p className="text-rose-100 mt-2 text-sm">Sua licença do ControlMarket expirou</p>
+          </div>
+
+          {/* Corpo */}
+          <div className="p-8 text-center">
+            <p className="text-slate-600 text-sm mb-2">Conta:</p>
+            <p className="font-bold text-slate-800 mb-6 text-sm bg-slate-50 px-4 py-2 rounded-xl">{session?.user?.email}</p>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 mb-6 text-left">
+              <h3 className="font-bold text-rose-800 mb-3 flex items-center gap-2">
+                <Clock className="w-5 h-5" /> Período de teste encerrado
+              </h3>
+              <p className="text-rose-700 text-sm">
+                Seu período de avaliação gratuita chegou ao fim. Para continuar usando o ControlMarket e ter acesso a todos os recursos — produtos, vendas, relatórios e sincronização em nuvem — renove sua assinatura.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <a
+                href="https://wa.me/5511999999999?text=Ol%C3%A1!%20Quero%20renovar%20minha%20assinatura%20do%20ControlMarket."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full bg-cm-green hover:brightness-110 text-white py-4 rounded-2xl font-bold transition-all shadow-lg shadow-green-100 text-center"
+              >
+                Renovar Assinatura via WhatsApp
+              </a>
+              <button
+                onClick={handleLogout}
+                className="block w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-2xl font-bold transition-all text-center text-sm"
+              >
+                Sair da Conta
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const renderContent = () => {
     try {
@@ -598,6 +709,23 @@ create policy "Users can manage their own sales" on public.sales
         </nav>
 
         <div className="p-4 border-t border-slate-200">
+          {/* Banner de trial ativo */}
+          {subscriptionStatus === 'trial' && !isAdmin && (
+            <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-0.5">Periodo de Teste</p>
+              <p className="text-2xl font-extrabold text-amber-600">{daysLeft} {daysLeft === 1 ? 'dia' : 'dias'}</p>
+              <p className="text-[10px] text-amber-600 mb-2">restantes no plano gratuito</p>
+              <a
+                href="https://wa.me/5511999999999?text=Ol%C3%A1!%20Quero%20assinar%20o%20ControlMarket."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full bg-cm-green text-white text-xs font-bold py-1.5 rounded-lg hover:brightness-110 transition-all"
+              >
+                Assinar Agora
+              </a>
+            </div>
+          )}
+
           <div className="mb-4 px-4">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Conta logada</p>
             <p className="text-sm font-medium text-slate-700 truncate mb-2" title={session?.user?.email}>{session?.user?.email}</p>
