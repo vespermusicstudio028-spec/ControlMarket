@@ -19,10 +19,10 @@ $SUPABASE_SQL   = "$SUPABASE_URL/sql/new"
 $SQL_FILE       = ".\supabase\setup_completo.sql"
 
 # Cores para output
-function Write-Passo { param($texto) Write-Host "`n[→] $texto" -ForegroundColor Cyan }
-function Write-Ok    { param($texto) Write-Host "    [✔] $texto" -ForegroundColor Green }
+function Write-Passo { param($texto) Write-Host "`n[>] $texto" -ForegroundColor Cyan }
+function Write-Ok    { param($texto) Write-Host "    [OK] $texto" -ForegroundColor Green }
 function Write-Aviso { param($texto) Write-Host "    [!] $texto" -ForegroundColor Yellow }
-function Write-Erro  { param($texto) Write-Host "    [✘] $texto" -ForegroundColor Red }
+function Write-Erro  { param($texto) Write-Host "    [ERR] $texto" -ForegroundColor Red }
 
 Clear-Host
 Write-Host "================================================" -ForegroundColor DarkCyan
@@ -211,7 +211,7 @@ if ($supabaseDisponivel) {
 # =============================================
 Write-Host ""
 Write-Host "================================================" -ForegroundColor DarkGreen
-Write-Host "   ✅ Deploy Finalizado!" -ForegroundColor Green
+Write-Host "   === Deploy Finalizado! ===" -ForegroundColor Green
 Write-Host "================================================" -ForegroundColor DarkGreen
 Write-Host "  GitHub  : https://github.com/$GITHUB_REPO" -ForegroundColor Cyan
 Write-Host "  Vercel  : $VERCEL_URL" -ForegroundColor Cyan
