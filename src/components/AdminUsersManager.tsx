@@ -166,20 +166,64 @@ export default function AdminUsersManager({ currentUser }: { currentUser: any })
         : null;
 
       if (modalMode === 'add') {
-        const newId = crypto.randomUUID();
-        const payload = {
-          id: newId,
-          email: formEmail,
-          name: formName,
-          phone: formPhone,
-          business_name: formBusinessName,
-          status: formStatus,
-          trial_ends_at: trialEndsAt,
-          created_at: new Date().toISOString()
-        };
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zjwpoxqymtvpttoswzhj.supabase.co';
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_IdVY-ERlCVmrSekSSh-Zaw_hiq0rtju';
+        
+        // Criar cliente temporário sem persistência de sessão para não deslogar o admin
+        const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+          }
+        });
 
-        const { error } = await supabase.from('profiles').insert(payload);
-        if (error) throw error;
+        // Senha padrão temporária para o primeiro acesso
+        const tempPassword = 'SenhaMarket123!';
+
+        const { data: signUpData, error: signUpError } = await tempSupabase.auth.signUp({
+          email: formEmail,
+          password: tempPassword,
+          options: {
+            data: {
+              name: formName,
+              phone: formPhone,
+              business_name: formBusinessName
+            }
+          }
+        });
+
+        if (signUpError) {
+          throw new Error(`Erro ao registrar usuário no Auth: ${signUpError.message}`);
+        }
+
+        const userId = signUpData.user?.id;
+        if (!userId) {
+          throw new Error("Não foi possível obter o ID gerado para o usuário.");
+        }
+
+        // Aguarda 1.5s para garantir que o trigger do banco criou o perfil antes do update
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Atualizar as informações do perfil criado automaticamente pelo trigger
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            name: formName,
+            phone: formPhone,
+            business_name: formBusinessName,
+            status: formStatus,
+            trial_ends_at: trialEndsAt
+          })
+          .eq('id', userId);
+
+        if (updateError) {
+          throw new Error(`Erro ao atualizar perfil do assinante: ${updateError.message}`);
+        }
+
+        // Exibir a senha temporária para o administrador
+        alert(`Assinante cadastrado com sucesso!\n\nEmail: ${formEmail}\nSenha temporária: ${tempPassword}\n\nInforme estes dados para o usuário acessar o sistema.`);
       } else if (modalMode === 'edit' && editingUserId) {
         const payload: any = {
           email: formEmail,
